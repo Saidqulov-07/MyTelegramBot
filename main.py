@@ -4,104 +4,53 @@ import os
 import re
 from telebot import types
 
-# 1. Klaviatura ob'ektini yaratamiz
-markup = types.InlineKeyboardMarkup()
-
-# 2. Tugmani yaratamiz (text - tugmada chiqadigan yozuv, callback_data - tugma bosilganda botga qaytadigan buyruq)
-button = types.InlineKeyboardButton(text="Yuklab olish", callback_data="download_video")
-
-# 3. Tugmani klaviaturaga qo'shamiz
-markup.add(button)
-
 TOKEN = "8708016300:AAEbKbvt6lW84vD4OAFFwIDI1PmbYbnpAkY"
-
 bot = telebot.TeleBot(TOKEN)
-
 DOWNLOAD_FOLDER = "downloads"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
-
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(
-        message.chat.id,
-        "📥 Media Downloader Bot\n\n"
-        "Link yuboring:\n"
-        "• Instagram\n"
-        "• YouTube\n"
-        "• TikTok\n"
-        "• Facebook\n"
-        "• Pinterest\n"
-        "• Snapchat\n"
-        "• Likee\n"
-        "• Threads"
-    )
-
+    bot.send_message(message.chat.id, "📥 Link yuboring, men videoni topaman!")
 
 @bot.message_handler(func=lambda m: True)
-def download_media(message):
-
+def get_link(message):
     url = message.text.strip()
-
     if not re.match(r'https?://', url):
-        bot.reply_to(message, "❌ Havola yuboring")
+        bot.reply_to(message, "❌ Toʻgʻri havola yuboring.")
         return
 
-    loading_msg = bot.reply_to(message, "⏳ Yuklanmoqda...")
-
+    # Video ma'lumotlarini olish (yuklamasdan)
+    msg = bot.reply_to(message, "🔍 Video qidirilmoqda...")
     try:
-
-        # DOWNLOAD SETTINGS
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{DOWNLOAD_FOLDER}/%(id)s.%(ext)s',
-            'noplaylist': True,
-            'quiet': True,
-        }
-
-        # DOWNLOAD
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
-
-        # DOWNLOADS papkasidan faylni topish
-        files = os.listdir(DOWNLOAD_FOLDER)
-
-        if not files:
-            bot.send_message(message.chat.id, "❌ Media topilmadi")
-            return
-
-        latest_file = max(
-            [os.path.join(DOWNLOAD_FOLDER, f) for f in files],
-            key=os.path.getctime
-        )
-
-        # TELEGRAMGA YUBORISH
-        with open(latest_file, 'rb') as media:
-
-            # VIDEO
-            if latest_file.endswith(('.mp4', '.mkv', '.webm')):
-                bot.send_video(message.chat.id, media)
-
-            # AUDIO
-            elif latest_file.endswith(('.mp3', '.m4a')):
-                bot.send_audio(message.chat.id, media)
-
-            # OTHER FILES
-            else:
-                bot.send_document(message.chat.id, media)
-
-        # STATUS MESSAGE DELETE
-        bot.delete_message(message.chat.id, loading_msg.message_id)
-
-        # FILE DELETE
-        os.remove(latest_file)
-
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', 'Video')
+            # Tugma yaratamiz (callback_data ichiga url ni yashiramiz)
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("📥 Yuklab olish", callback_data=f"down:{url}"))
+            
+            bot.edit_message_text(f"🎬 Topildi: {title}", message.chat.id, msg.message_id, reply_markup=markup)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Xato:\n{e}")
+        bot.edit_message_text(f"❌ Xatolik: {e}", message.chat.id, msg.message_id)
 
-
-print("Bot ishladi ✅")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("down:"))
+def download_callback(call):
+    url = call.data.split(":")[1]
+    bot.answer_callback_query(call.id, "⏳ Yuklanmoqda, kuting...")
+    
+    try:
+        ydl_opts = {'format': 'best', 'outtmpl': f'{DOWNLOAD_FOLDER}/%(id)s.%(ext)s'}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+        
+        with open(filename, 'rb') as f:
+            bot.send_video(call.message.chat.id, f)
+        os.remove(filename)
+    except Exception as e:
+        bot.send_message(call.message.chat.id, f"❌ Xato: {e}")
 
 bot.infinity_polling()
