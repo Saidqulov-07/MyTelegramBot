@@ -28,34 +28,48 @@ def get_link(message):
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Video')
             
-            # Ikkita tugma yaratamiz
             markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("🎬 Videoni yuklash (MP4)", callback_data=f"down_v:{url}"))
-            markup.add(types.InlineKeyboardButton("🎵 Musiqani yuklash (MP3)", callback_data=f"down_a:{url}"))
+            # Callback ma'lumotlarini aniqroq qildik
+            markup.add(types.InlineKeyboardButton("🎬 Videoni yuklash (MP4)", callback_data=f"vid|{url}"))
+            markup.add(types.InlineKeyboardButton("🎵 Musiqani yuklash (MP3)", callback_data=f"mus|{url}"))
             
             bot.edit_message_text(f"🎬 Topildi: {title}\nQaysi formatda yuklaymiz?", message.chat.id, msg.message_id, reply_markup=markup)
     except Exception as e:
         bot.edit_message_text(f"❌ Xatolik: {e}", message.chat.id, msg.message_id)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("down_"))
+@bot.callback_query_handler(func=lambda call: True)
 def download_callback(call):
-    action, url = call.data.split(":")
+    # Callback ma'lumotini "|" belgisi bilan ajratib olamiz
+    data = call.data.split("|")
+    if len(data) != 2:
+        return
+    
+    action, url = data
     bot.answer_callback_query(call.id, "⏳ Yuklanmoqda, kuting...")
     
-    # Agar MP3 tanlansa formatni o'zgartiramiz
+    # Yuklash sozlamalari
     ydl_opts = {'outtmpl': f'{DOWNLOAD_FOLDER}/%(id)s.%(ext)s'}
-    if action == "down_a":
+    
+    if action == "mus":
         ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
     else:
-        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        ydl_opts['format'] = 'best'
         
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
+            # Agar mp3 bo'lsa, kengaytmasi o'zgaradi
+            if action == "mus":
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
         
         with open(filename, 'rb') as f:
-            if action == "down_a":
+            if action == "mus":
                 bot.send_audio(call.message.chat.id, f)
             else:
                 bot.send_video(call.message.chat.id, f)
@@ -63,5 +77,4 @@ def download_callback(call):
     except Exception as e:
         bot.send_message(call.message.chat.id, f"❌ Xato: {e}")
 
-print("Bot ishladi ✅")
 bot.infinity_polling()
