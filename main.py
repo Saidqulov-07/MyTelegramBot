@@ -5,7 +5,7 @@ import re
 import uuid
 from telebot import types
 
-TOKEN = "8708016300:AAEbKbvt6lW84vD4OAFFwIDI1PmbYbnpAkY"
+TOKEN = "8708016300:AAF-uYjYETmSppYGUKu4mf6Hb8l2BlItiH0"
 bot = telebot.TeleBot(TOKEN)
 DOWNLOAD_FOLDER = "downloads"
 
