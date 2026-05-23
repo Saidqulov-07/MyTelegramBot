@@ -2,11 +2,15 @@ import telebot
 import yt_dlp
 import os
 import re
+import uuid
 from telebot import types
 
 TOKEN = "8708016300:AAEbKbvt6lW84vD4OAFFwIDI1PmbYbnpAkY"
 bot = telebot.TeleBot(TOKEN)
 DOWNLOAD_FOLDER = "downloads"
+
+# Linklarni vaqtincha saqlash uchun lug'at (Memory storage)
+url_storage = {}
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -22,6 +26,10 @@ def get_link(message):
         bot.reply_to(message, "❌ Toʻgʻri havola yuboring.")
         return
 
+    # Unikal ID yaratamiz
+    link_id = str(uuid.uuid4())[:8]
+    url_storage[link_id] = url
+
     msg = bot.reply_to(message, "🔍 Video ma'lumotlari olinmoqda...")
     try:
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
@@ -29,9 +37,9 @@ def get_link(message):
             title = info.get('title', 'Video')
             
             markup = types.InlineKeyboardMarkup()
-            # Callback ma'lumotlarini aniqroq qildik
-            markup.add(types.InlineKeyboardButton("🎬 Videoni yuklash (MP4)", callback_data=f"vid|{url}"))
-            markup.add(types.InlineKeyboardButton("🎵 Musiqani yuklash (MP3)", callback_data=f"mus|{url}"))
+            # Tugmalarga faqat qisqa ID ni yozamiz
+            markup.add(types.InlineKeyboardButton("🎬 Videoni yuklash (MP4)", callback_data=f"vid|{link_id}"))
+            markup.add(types.InlineKeyboardButton("🎵 Musiqani yuklash (MP3)", callback_data=f"mus|{link_id}"))
             
             bot.edit_message_text(f"🎬 Topildi: {title}\nQaysi formatda yuklaymiz?", message.chat.id, msg.message_id, reply_markup=markup)
     except Exception as e:
@@ -39,24 +47,24 @@ def get_link(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def download_callback(call):
-    # Callback ma'lumotini "|" belgisi bilan ajratib olamiz
     data = call.data.split("|")
     if len(data) != 2:
         return
     
-    action, url = data
+    action, link_id = data
+    url = url_storage.get(link_id)
+    
+    if not url:
+        bot.answer_callback_query(call.id, "❌ Link eskirgan, qaytadan yuboring!")
+        return
+
     bot.answer_callback_query(call.id, "⏳ Yuklanmoqda, kuting...")
     
-    # Yuklash sozlamalari
     ydl_opts = {'outtmpl': f'{DOWNLOAD_FOLDER}/%(id)s.%(ext)s'}
     
     if action == "mus":
         ydl_opts['format'] = 'bestaudio/best'
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
     else:
         ydl_opts['format'] = 'best'
         
@@ -64,7 +72,6 @@ def download_callback(call):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-            # Agar mp3 bo'lsa, kengaytmasi o'zgaradi
             if action == "mus":
                 filename = filename.rsplit('.', 1)[0] + '.mp3'
         
