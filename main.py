@@ -2,6 +2,16 @@ import telebot
 import yt_dlp
 import os
 import re
+from telebot import types
+
+# 1. Klaviatura ob'ektini yaratamiz
+markup = types.InlineKeyboardMarkup()
+
+# 2. Tugmani yaratamiz (text - tugmada chiqadigan yozuv, callback_data - tugma bosilganda botga qaytadigan buyruq)
+button = types.InlineKeyboardButton(text="Yuklab olish", callback_data="download_video")
+
+# 3. Tugmani klaviaturaga qo'shamiz
+markup.add(button)
 
 TOKEN = "8708016300:AAEbKbvt6lW84vD4OAFFwIDI1PmbYbnpAkY"
 
